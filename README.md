@@ -1,2 +1,5 @@
-# golang-worker-pool-template
-A simple Golang worker pool template
+# patterns
+
+A collection of reusable Go patterns
+
+- [`workerpool`](https://github.com/sean-/patterns/workerpool)
