@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -21,22 +22,14 @@ type task struct {
 }
 
 type producer struct {
-	queue workerpool.SubmissionQueue
-
-	created uint
-	stalls  uint
-}
-
-func (p *producer) IncrCreated() {
-	p.created++
-}
-
-func (p *producer) IncrStalls() {
-	p.stalls++
+	queue   workerpool.SubmissionQueue
+	created uint64
+	stalls  uint64
 }
 
 func (p *producer) Run(ctx context.Context, tid workerpool.ThreadID) error {
-	remainingWork := 2
+	const desiredWorkCount = 10
+	remainingWork := desiredWorkCount
 	var fullCount int
 
 STOP_PRODUCING_WORK:
@@ -45,34 +38,47 @@ STOP_PRODUCING_WORK:
 		t := &task{}
 		select {
 		case p.queue <- t:
-			p.IncrCreated()
+			p.created++
 			remainingWork--
-			fmt.Printf("producer[%d]: added a work item: %d remaining\n", tid, remainingWork)
+			//fmt.Printf("producer[%d]: added a work item: %d remaining\n", tid, remainingWork)
 		case <-ctx.Done():
-			fmt.Printf("producer[%d]: shutting down\n", tid)
+			//fmt.Printf("producer[%d]: shutting down\n", tid)
 			break STOP_PRODUCING_WORK
 		default:
-			fmt.Printf("unable to add an item to the work queue, it's full: %d\n", len(p.queue))
-			p.IncrStalls()
+			//fmt.Printf("unable to add an item to the work queue, it's full: %d\n", len(p.queue))
+			p.stalls++
 		}
-		//fmt.Printf("producer[%d]: %d Sleeping for %s\n", tid, i, d)
 		time.Sleep(d)
-		//fmt.Printf("producer[%d]: %d Done sleeping\n", tid, i)
 	}
-	fmt.Printf("producer[%d]: exiting: queue full %d times\n", tid, fullCount)
+	//fmt.Printf("producer[%d]: exiting: competed %d, queue full %d times\n", tid, desiredWorkCount-remainingWork, fullCount)
 
 	return nil
 }
 
 type producerFactory struct {
+	lock    sync.Mutex
+	created uint64
+	stalls  uint64
 }
 
 func (pf *producerFactory) New(q workerpool.SubmissionQueue) (workerpool.Producer, error) {
 	return &producer{queue: q}, nil
 }
 
+func (pf *producerFactory) Finished(producerIface workerpool.Producer) {
+	p := producerIface.(*producer)
+
+	pf.lock.Lock()
+	defer pf.lock.Unlock()
+
+	pf.created += p.created
+	pf.stalls += p.stalls
+}
+
 type worker struct {
-	queue workerpool.SubmissionQueue
+	queue  workerpool.SubmissionQueue
+	done   uint64
+	stalls uint64
 }
 
 func newWorker(q workerpool.SubmissionQueue) *worker {
@@ -80,9 +86,6 @@ func newWorker(q workerpool.SubmissionQueue) *worker {
 }
 
 func (w *worker) Run(ctx context.Context, tid workerpool.ThreadID) error {
-	var workDone int
-	var workStall int
-
 CHANNEL_CLOSED:
 	for {
 		select {
@@ -91,46 +94,62 @@ CHANNEL_CLOSED:
 			if !ok {
 				break CHANNEL_CLOSED
 			}
-			workDone++
+			w.done++
 		case <-ctx.Done():
 			fmt.Printf("worker[%d]: shutting down\n", tid)
 			break CHANNEL_CLOSED
 		default:
-			workStall++
+			w.stalls++
 		}
 
 		d := 2 * time.Second
-		fmt.Printf("worker[%d]: Sleeping for %s\n", tid, d)
+		//fmt.Printf("worker[%d]: Sleeping for %s\n", tid, d)
 		time.Sleep(d)
-		fmt.Printf("worker[%d]: Done sleeping\n", tid)
+		//fmt.Printf("worker[%d]: Done sleeping\n", tid)
 	}
-	fmt.Printf("worker[%d]: exiting: completed %d, stalled %d times\n", tid, workDone, workStall)
+	//fmt.Printf("worker[%d]: exiting: completed %d, stalled %d times\n", tid, w.done, w.stalls)
 
 	return nil
 }
 
 type workerFactory struct {
+	lock   sync.Mutex
+	done   uint64
+	stalls uint64
 }
 
 func (wf *workerFactory) New(q workerpool.SubmissionQueue) (workerpool.Worker, error) {
 	return &worker{queue: q}, nil
 }
 
+func (wf *workerFactory) Finished(workerIface workerpool.Worker) {
+	w := workerIface.(*worker)
+
+	wf.lock.Lock()
+	defer wf.lock.Unlock()
+
+	wf.done += w.done
+	wf.stalls += w.stalls
+}
+
 func realMain() int {
 	seed.MustInit()
 
+	wf := workerFactory{}
+	pf := producerFactory{}
+
 	app := workerpool.New(
 		workerpool.Config{
-			InitialNumWorkers:   1,
-			InitialNumProducers: 5,
+			InitialNumWorkers:   5,
+			InitialNumProducers: 1,
 			WorkQueueDepth:      2,
 		},
 		workerpool.Handlers{
 			Reload: nil,
 		},
 		workerpool.Threads{
-			ProducerFactory: &producerFactory{},
-			WorkerFactory:   &workerFactory{},
+			ProducerFactory: &pf,
+			WorkerFactory:   &wf,
 		},
 	)
 	defer app.Stop()
@@ -163,6 +182,11 @@ func realMain() int {
 		return sysexits.Software
 	}
 	fmt.Println("finished waiting for workers")
+
+	fmt.Printf("Work Created: %d\n", pf.created)
+	fmt.Printf("Work Completed: %d\n", wf.done)
+	fmt.Printf("Producer Stalls: %d\n", pf.stalls)
+	fmt.Printf("Worker Stalls: %d\n", wf.stalls)
 
 	return sysexits.OK
 }

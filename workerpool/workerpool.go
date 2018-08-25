@@ -85,8 +85,12 @@ func (a *workerPool) StartWorkers() error {
 					panic(fmt.Sprintf("error starting worker thread %d: %v", i, err))
 				}
 
-				a.handlers.WorkerRunErr(err)
+				if resume := a.handlers.WorkerRunErr(err); !resume {
+					return
+				}
 			}
+
+			a.threads.WorkerFactory.Finished(worker)
 		}()
 	}
 
@@ -120,8 +124,12 @@ func (a *workerPool) StartProducers() error {
 					panic(fmt.Sprintf("error starting producer thread %d: %v", i, err))
 				}
 
-				a.handlers.ProducerRunErr(err)
+				if resume := a.handlers.ProducerRunErr(err); !resume {
+					return
+				}
 			}
+
+			a.threads.ProducerFactory.Finished(producer)
 		}()
 	}
 
