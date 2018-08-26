@@ -18,8 +18,8 @@ func main() {
 func realMain() int {
 	seed.MustInit()
 
-	wf := workerFactory{}
-	pf := producerFactory{}
+	wf := &workerFactory{}
+	pf := &producerFactory{}
 
 	app := workerpool.New(
 		workerpool.Config{
@@ -28,8 +28,8 @@ func realMain() int {
 			WorkQueueDepth:      10,
 		},
 		workerpool.Factories{
-			ProducerFactory: &pf,
-			WorkerFactory:   &wf,
+			ProducerFactory: pf,
+			WorkerFactory:   wf,
 		},
 		workerpool.Handlers{
 			Reload: nil,

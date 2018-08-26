@@ -37,7 +37,7 @@ func New(appCfg Config, factories Factories, handlers Handlers) *workerPool {
 		shutdownCtx: ctx,
 
 		cfg:       deepcopy.Copy(appCfg).(Config),
-		factories: deepcopy.Copy(factories).(Factories),
+		factories: factories,
 		handlers:  deepcopy.Copy(handlers).(Handlers),
 	}
 
