@@ -14,12 +14,13 @@ type producerFactory struct {
 }
 
 func (pf *producerFactory) New(q workerpool.SubmissionQueue) (workerpool.Producer, error) {
+	const maxRealTasks = 10
 	p := &producer{
 		queue:           q,
-		pacingDuration:  100 * time.Millisecond,
-		backoffDuration: 1 * time.Second,
-		maxRealTasks:    3,
-		maxCanaryTasks:  10,
+		pacingDuration:  1 * time.Millisecond,
+		backoffDuration: 100 * time.Millisecond,
+		maxRealTasks:    maxRealTasks,
+		maxCanaryTasks:  1000 - maxRealTasks,
 	}
 
 	return p, nil

@@ -7,7 +7,7 @@ type taskReal struct {
 }
 
 func (rt *taskReal) DoWork() {
-	time.Sleep(1 * time.Second)
+	time.Sleep(2 * time.Second)
 }
 
 type taskCanary struct {

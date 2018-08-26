@@ -19,12 +19,15 @@ func newWorker(q workerpool.SubmissionQueue) *worker {
 }
 
 func (w *worker) Run(ctx context.Context, tid workerpool.ThreadID) error {
-CHANNEL_CLOSED:
+EXIT:
 	for {
 		select {
+		case <-ctx.Done():
+			fmt.Printf("worker[%d]: shutting down\n", tid)
+			break EXIT
 		case t, ok := <-w.queue:
 			if !ok {
-				break CHANNEL_CLOSED
+				break EXIT // channel closed
 			}
 			w.completed++
 
@@ -40,10 +43,6 @@ CHANNEL_CLOSED:
 			default:
 				panic(fmt.Sprintf("invalid type: %v", task))
 			}
-
-		case <-ctx.Done():
-			fmt.Printf("worker[%d]: shutting down\n", tid)
-			break CHANNEL_CLOSED
 		}
 	}
 	//fmt.Printf("worker[%d]: exiting: completed %d, stalled %d times\n", tid, w.completed, w.stalls)

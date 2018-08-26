@@ -35,7 +35,7 @@ func (p *producer) Run(ctx context.Context, tid workerpool.ThreadID) error {
 	const desiredWorkCount = 100
 	remainingWork := desiredWorkCount
 
-STOP_PRODUCING_WORK:
+EXIT:
 	for remainingWork > 0 {
 		var task workerpool.Task
 
@@ -84,18 +84,34 @@ STOP_PRODUCING_WORK:
 		}
 
 		select {
+		case <-ctx.Done():
+			//fmt.Printf("producer[%d]: shutting down\n", tid)
+			break EXIT
 		case p.queue <- task:
 			p.submittedWork++
 			remainingWork--
 			//fmt.Printf("producer[%d]: added a work item: %d remaining\n", tid, remainingWork)
-		case <-ctx.Done():
-			//fmt.Printf("producer[%d]: shutting down\n", tid)
-			break STOP_PRODUCING_WORK
+			time.Sleep(p.pacingDuration)
 		default:
 			fmt.Printf("unable to add an item to the work queue, it's full: %d\n", len(p.queue))
 			p.stalls++
+
+			// Make a blocking write now that we've recorded the stall
+			blockedAt := time.Now()
+			select {
+			case <-ctx.Done():
+				break EXIT
+			case p.queue <- task:
+				p.submittedWork++
+				remainingWork--
+
+				// Smooth out the pacing
+				stallDuration := time.Now().Sub(blockedAt)
+				if stallDuration < p.pacingDuration {
+					time.Sleep(p.pacingDuration - stallDuration)
+				}
+			}
 		}
-		time.Sleep(p.pacingDuration)
 	}
 	//fmt.Printf("producer[%d]: exiting: competed %d, stalled %d times\n", tid, desiredWorkCount-remainingWork, p.stalls)
 
