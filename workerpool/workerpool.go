@@ -139,7 +139,7 @@ func (a *workerPool) StartProducers() error {
 }
 
 func (a *workerPool) Stop() error {
-	a.shutdownFn()
+	a.InitiateShutdown()
 
 	return nil
 }
