@@ -106,9 +106,8 @@ func (a *workerPool) ShutdownCtx() context.Context {
 // called.  If ProducerRunErr() is nil, panic() is called instead.
 func (a *workerPool) StartProducers() error {
 	for i := a.cfg.InitialNumProducers; i > 0; i-- {
-		i := i
 		a.producersWG.Add(1)
-		go func() {
+		go func(i uint) {
 			defer a.producersWG.Done()
 			threadID := ThreadID(i)
 			producer, err := a.threads.ProducerFactory.New(a.submissionQueue)
@@ -131,7 +130,7 @@ func (a *workerPool) StartProducers() error {
 			}
 
 			a.threads.ProducerFactory.Finished(threadID, producer)
-		}()
+		}(i)
 	}
 
 	return nil
