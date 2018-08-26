@@ -18,67 +18,148 @@ func main() {
 	os.Exit(realMain())
 }
 
-type task struct {
+type realTask struct {
+	finishFn func()
+}
+
+func (rt *realTask) DoWork() {
+	time.Sleep(1 * time.Second)
+}
+
+type canaryTask struct {
+	finishFn func()
+}
+
+func (ct *canaryTask) DoWork() {
+	time.Sleep(10 * time.Millisecond)
 }
 
 type producer struct {
-	queue   workerpool.SubmissionQueue
-	created uint64
-	stalls  uint64
+	queue         workerpool.SubmissionQueue
+	submittedWork uint64
+	stalls        uint64
+
+	// pacingDuration is the delay to introduce when we're able to flood work into
+	// the queue
+	pacingDuration time.Duration
+
+	// backoffDuration is the delay when the max in-flight operations has been
+	// exceeded
+	backoffDuration time.Duration
+
+	realTaskLock  sync.Mutex
+	maxRealTasks  uint64
+	currRealTasks uint64
+
+	canaryTaskLock  sync.Mutex
+	maxCanaryTasks  uint64
+	currCanaryTasks uint64
 }
 
 func (p *producer) Run(ctx context.Context, tid workerpool.ThreadID) error {
-	const desiredWorkCount = 10
+	const desiredWorkCount = 100
 	remainingWork := desiredWorkCount
-	var fullCount int
 
 STOP_PRODUCING_WORK:
 	for remainingWork > 0 {
-		d := 1 * time.Second
-		t := &task{}
+		var task workerpool.Task
+
+		p.realTaskLock.Lock()
+		if p.currRealTasks < p.maxRealTasks {
+			p.currRealTasks++
+			p.realTaskLock.Unlock()
+			taskID := remainingWork
+			_ = taskID
+			rt := &realTask{
+				finishFn: func() {
+					p.realTaskLock.Lock()
+					defer p.realTaskLock.Unlock()
+					p.currRealTasks--
+				},
+			}
+			task = rt
+		} else {
+			p.realTaskLock.Unlock()
+		}
+
+		if task == nil {
+			p.canaryTaskLock.Lock()
+			if p.currCanaryTasks < p.maxCanaryTasks {
+				p.currCanaryTasks++
+				p.canaryTaskLock.Unlock()
+				taskID := remainingWork
+				_ = taskID
+				ct := &canaryTask{
+					finishFn: func() {
+						p.canaryTaskLock.Lock()
+						defer p.canaryTaskLock.Unlock()
+						p.currCanaryTasks--
+					},
+				}
+				task = ct
+			} else {
+				p.canaryTaskLock.Unlock()
+			}
+		}
+
+		if task == nil {
+			//fmt.Printf("producer[%d]: backing off, too much work in-flight\n", tid)
+			time.Sleep(p.backoffDuration)
+			continue
+		}
+
 		select {
-		case p.queue <- t:
-			p.created++
+		case p.queue <- task:
+			p.submittedWork++
 			remainingWork--
 			//fmt.Printf("producer[%d]: added a work item: %d remaining\n", tid, remainingWork)
 		case <-ctx.Done():
 			//fmt.Printf("producer[%d]: shutting down\n", tid)
 			break STOP_PRODUCING_WORK
 		default:
-			//fmt.Printf("unable to add an item to the work queue, it's full: %d\n", len(p.queue))
+			fmt.Printf("unable to add an item to the work queue, it's full: %d\n", len(p.queue))
 			p.stalls++
 		}
-		time.Sleep(d)
+		time.Sleep(p.pacingDuration)
 	}
-	//fmt.Printf("producer[%d]: exiting: competed %d, queue full %d times\n", tid, desiredWorkCount-remainingWork, fullCount)
+	//fmt.Printf("producer[%d]: exiting: competed %d, stalled %d times\n", tid, desiredWorkCount-remainingWork, p.stalls)
 
 	return nil
 }
 
 type producerFactory struct {
-	lock    sync.Mutex
-	created uint64
-	stalls  uint64
+	lock          sync.Mutex
+	submittedWork uint64
+	stalls        uint64
 }
 
 func (pf *producerFactory) New(q workerpool.SubmissionQueue) (workerpool.Producer, error) {
-	return &producer{queue: q}, nil
+	p := &producer{
+		queue:           q,
+		pacingDuration:  100 * time.Millisecond,
+		backoffDuration: 1 * time.Second,
+		maxRealTasks:    3,
+		maxCanaryTasks:  10,
+	}
+
+	return p, nil
 }
 
-func (pf *producerFactory) Finished(producerIface workerpool.Producer) {
+func (pf *producerFactory) Finished(threadID workerpool.ThreadID, producerIface workerpool.Producer) {
 	p := producerIface.(*producer)
 
 	pf.lock.Lock()
 	defer pf.lock.Unlock()
 
-	pf.created += p.created
+	pf.submittedWork += p.submittedWork
 	pf.stalls += p.stalls
 }
 
 type worker struct {
-	queue  workerpool.SubmissionQueue
-	done   uint64
-	stalls uint64
+	queue               workerpool.SubmissionQueue
+	completed           uint64
+	workCompletedReal   uint64
+	workCompletedCanary uint64
 }
 
 func newWorker(q workerpool.SubmissionQueue) *worker {
@@ -90,46 +171,54 @@ CHANNEL_CLOSED:
 	for {
 		select {
 		case t, ok := <-w.queue:
-			_ = t
 			if !ok {
 				break CHANNEL_CLOSED
 			}
-			w.done++
+			w.completed++
+
+			switch task := t.(type) {
+			case *realTask:
+				task.DoWork()
+				task.finishFn()
+				w.workCompletedReal++
+			case *canaryTask:
+				task.DoWork()
+				task.finishFn()
+				w.workCompletedCanary++
+			default:
+				panic(fmt.Sprintf("invalid type: %v", task))
+			}
+
 		case <-ctx.Done():
 			fmt.Printf("worker[%d]: shutting down\n", tid)
 			break CHANNEL_CLOSED
-		default:
-			w.stalls++
 		}
-
-		d := 2 * time.Second
-		//fmt.Printf("worker[%d]: Sleeping for %s\n", tid, d)
-		time.Sleep(d)
-		//fmt.Printf("worker[%d]: Done sleeping\n", tid)
 	}
-	//fmt.Printf("worker[%d]: exiting: completed %d, stalled %d times\n", tid, w.done, w.stalls)
+	//fmt.Printf("worker[%d]: exiting: completed %d, stalled %d times\n", tid, w.completed, w.stalls)
 
 	return nil
 }
 
 type workerFactory struct {
-	lock   sync.Mutex
-	done   uint64
-	stalls uint64
+	lock                sync.Mutex
+	completed           uint64
+	stalls              uint64
+	workCompletedCanary uint64
+	workCompletedReal   uint64
 }
 
 func (wf *workerFactory) New(q workerpool.SubmissionQueue) (workerpool.Worker, error) {
 	return &worker{queue: q}, nil
 }
 
-func (wf *workerFactory) Finished(workerIface workerpool.Worker) {
+func (wf *workerFactory) Finished(threadID workerpool.ThreadID, workerIface workerpool.Worker) {
 	w := workerIface.(*worker)
 
 	wf.lock.Lock()
 	defer wf.lock.Unlock()
-
-	wf.done += w.done
-	wf.stalls += w.stalls
+	wf.workCompletedCanary += w.workCompletedCanary
+	wf.completed += w.completed
+	wf.workCompletedReal += w.workCompletedReal
 }
 
 func realMain() int {
@@ -142,7 +231,7 @@ func realMain() int {
 		workerpool.Config{
 			InitialNumWorkers:   5,
 			InitialNumProducers: 1,
-			WorkQueueDepth:      2,
+			WorkQueueDepth:      10,
 		},
 		workerpool.Handlers{
 			Reload: nil,
@@ -183,8 +272,10 @@ func realMain() int {
 	}
 	fmt.Println("finished waiting for workers")
 
-	fmt.Printf("Work Created: %d\n", pf.created)
-	fmt.Printf("Work Completed: %d\n", wf.done)
+	fmt.Printf("Work Submitted: %d\n", pf.submittedWork)
+	fmt.Printf("Work Completed: %d\n", wf.completed)
+	fmt.Printf("  Real Work Completed:   %d\n", wf.workCompletedReal)
+	fmt.Printf("  Canary Work Completed: %d\n", wf.workCompletedCanary)
 	fmt.Printf("Producer Stalls: %d\n", pf.stalls)
 	fmt.Printf("Worker Stalls: %d\n", wf.stalls)
 

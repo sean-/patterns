@@ -2,5 +2,5 @@ package workerpool
 
 type ProducerFactory interface {
 	New(SubmissionQueue) (Producer, error)
-	Finished(Producer)
+	Finished(ThreadID, Producer)
 }

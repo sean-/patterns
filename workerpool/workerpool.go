@@ -71,6 +71,7 @@ func (a *workerPool) StartWorkers() error {
 		a.workersWG.Add(1)
 		go func() {
 			defer a.workersWG.Done()
+			threadID := ThreadID(i)
 			worker, err := a.threads.WorkerFactory.New(a.submissionQueue)
 			if err != nil {
 				if a.handlers.WorkerFactoryNewErr == nil {
@@ -80,7 +81,7 @@ func (a *workerPool) StartWorkers() error {
 				a.handlers.WorkerFactoryNewErr(err)
 			}
 
-			if err := worker.Run(a.shutdownCtx, ThreadID(i)); err != nil {
+			if err := worker.Run(a.shutdownCtx, threadID); err != nil {
 				if a.handlers.WorkerRunErr == nil {
 					panic(fmt.Sprintf("error starting worker thread %d: %v", i, err))
 				}
@@ -90,7 +91,7 @@ func (a *workerPool) StartWorkers() error {
 				}
 			}
 
-			a.threads.WorkerFactory.Finished(worker)
+			a.threads.WorkerFactory.Finished(threadID, worker)
 		}()
 	}
 
@@ -110,6 +111,7 @@ func (a *workerPool) StartProducers() error {
 		a.producersWG.Add(1)
 		go func() {
 			defer a.producersWG.Done()
+			threadID := ThreadID(i)
 			producer, err := a.threads.ProducerFactory.New(a.submissionQueue)
 			if err != nil {
 				if a.handlers.ProducerFactoryNewErr == nil {
@@ -119,7 +121,7 @@ func (a *workerPool) StartProducers() error {
 				a.handlers.ProducerFactoryNewErr(err)
 			}
 
-			if err := producer.Run(a.shutdownCtx, ThreadID(i)); err != nil {
+			if err := producer.Run(a.shutdownCtx, threadID); err != nil {
 				if a.handlers.ProducerRunErr == nil {
 					panic(fmt.Sprintf("error starting producer thread %d: %v", i, err))
 				}
@@ -129,7 +131,7 @@ func (a *workerPool) StartProducers() error {
 				}
 			}
 
-			a.threads.ProducerFactory.Finished(producer)
+			a.threads.ProducerFactory.Finished(threadID, producer)
 		}()
 	}
 
