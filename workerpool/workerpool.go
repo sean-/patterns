@@ -67,9 +67,8 @@ func (a *workerPool) Reload() {
 
 func (a *workerPool) StartWorkers() error {
 	for i := a.cfg.InitialNumWorkers; i > 0; i-- {
-		i := i
 		a.workersWG.Add(1)
-		go func() {
+		go func(i uint) {
 			defer a.workersWG.Done()
 			threadID := ThreadID(i)
 			worker, err := a.threads.WorkerFactory.New(a.submissionQueue)
@@ -92,7 +91,7 @@ func (a *workerPool) StartWorkers() error {
 			}
 
 			a.threads.WorkerFactory.Finished(threadID, worker)
-		}()
+		}(i)
 	}
 
 	return nil
