@@ -4,8 +4,11 @@ import (
 	"context"
 	"fmt"
 	"sync"
+
+	"github.com/mohae/deepcopy"
 )
 
+// workerPool is a private type that can only be created via New
 type workerPool struct {
 	submissionQueue SubmissionQueue
 
@@ -17,12 +20,13 @@ type workerPool struct {
 	shutdownCtx context.Context
 	shutdown    bool
 
-	cfg      Config
-	handlers Handlers
-	threads  Threads
+	cfg       Config
+	factories Factories
+	handlers  Handlers
 }
 
-func New(appCfg Config, handlers Handlers, threads Threads) *workerPool {
+// New creates a new workerpool populated with Config, Handlers, and Factories.
+func New(appCfg Config, factories Factories, handlers Handlers) *workerPool {
 	ctx, cancel := context.WithCancel(context.Background())
 	app := &workerPool{
 		submissionQueue: make(SubmissionQueue, appCfg.WorkQueueDepth),
@@ -32,9 +36,9 @@ func New(appCfg Config, handlers Handlers, threads Threads) *workerPool {
 		shutdownFn:  cancel,
 		shutdownCtx: ctx,
 
-		cfg:      appCfg.Copy(),
-		handlers: handlers.Copy(),
-		threads:  threads.Copy(),
+		cfg:       deepcopy.Copy(appCfg).(Config),
+		factories: deepcopy.Copy(factories).(Factories),
+		handlers:  deepcopy.Copy(handlers).(Handlers),
 	}
 
 	return app
@@ -56,6 +60,7 @@ func (a *workerPool) InitiateShutdown() (bool, error) {
 	return true, nil
 }
 
+// Reload calls the reload handler, if set
 func (a *workerPool) Reload() {
 	a.signalLock.Lock()
 	defer a.signalLock.Unlock()
@@ -65,38 +70,8 @@ func (a *workerPool) Reload() {
 	}
 }
 
-func (a *workerPool) StartWorkers() error {
-	for i := a.cfg.InitialNumWorkers; i > 0; i-- {
-		a.workersWG.Add(1)
-		go func(i uint) {
-			defer a.workersWG.Done()
-			threadID := ThreadID(i)
-			worker, err := a.threads.WorkerFactory.New(a.submissionQueue)
-			if err != nil {
-				if a.handlers.WorkerFactoryNewErr == nil {
-					panic(fmt.Sprintf("error creating a new worker %d: %v", i, err))
-				}
-
-				a.handlers.WorkerFactoryNewErr(err)
-			}
-
-			if err := worker.Run(a.shutdownCtx, threadID); err != nil {
-				if a.handlers.WorkerRunErr == nil {
-					panic(fmt.Sprintf("error starting worker thread %d: %v", i, err))
-				}
-
-				if resume := a.handlers.WorkerRunErr(err); !resume {
-					return
-				}
-			}
-
-			a.threads.WorkerFactory.Finished(threadID, worker)
-		}(i)
-	}
-
-	return nil
-}
-
+// ShutdownCtx returns the shutdown context for the workerpool (shared between
+// producers and workers).
 func (a *workerPool) ShutdownCtx() context.Context {
 	return a.shutdownCtx
 }
@@ -110,7 +85,7 @@ func (a *workerPool) StartProducers() error {
 		go func(i uint) {
 			defer a.producersWG.Done()
 			threadID := ThreadID(i)
-			producer, err := a.threads.ProducerFactory.New(a.submissionQueue)
+			producer, err := a.factories.ProducerFactory.New(a.submissionQueue)
 			if err != nil {
 				if a.handlers.ProducerFactoryNewErr == nil {
 					panic(fmt.Sprintf("error creating a new producer %d: %v", i, err))
@@ -129,19 +104,48 @@ func (a *workerPool) StartProducers() error {
 				}
 			}
 
-			a.threads.ProducerFactory.Finished(threadID, producer)
+			a.factories.ProducerFactory.Finished(threadID, producer)
 		}(i)
 	}
 
 	return nil
 }
 
-func (a *workerPool) Stop() error {
-	a.InitiateShutdown()
+// StartWorkers starts the worker pool
+func (a *workerPool) StartWorkers() error {
+	for i := a.cfg.InitialNumWorkers; i > 0; i-- {
+		a.workersWG.Add(1)
+		go func(i uint) {
+			defer a.workersWG.Done()
+			threadID := ThreadID(i)
+			worker, err := a.factories.WorkerFactory.New(a.submissionQueue)
+			if err != nil {
+				if a.handlers.WorkerFactoryNewErr == nil {
+					panic(fmt.Sprintf("error creating a new worker %d: %v", i, err))
+				}
+
+				a.handlers.WorkerFactoryNewErr(err)
+			}
+
+			if err := worker.Run(a.shutdownCtx, threadID); err != nil {
+				if a.handlers.WorkerRunErr == nil {
+					panic(fmt.Sprintf("error starting worker thread %d: %v", i, err))
+				}
+
+				if resume := a.handlers.WorkerRunErr(err); !resume {
+					return
+				}
+			}
+
+			a.factories.WorkerFactory.Finished(threadID, worker)
+		}(i)
+	}
 
 	return nil
 }
 
+// WaitProducers blocks until all producers have exited or ShutdownCtx has been
+// closed.  WaitProducers closes the submission queue.
 func (a *workerPool) WaitProducers() error {
 	a.producersWG.Wait()
 	close(a.submissionQueue)
@@ -149,6 +153,8 @@ func (a *workerPool) WaitProducers() error {
 	return nil
 }
 
+// WaitProducers blocks until all producers have exited or ShutdownCtx has been
+// closed.
 func (a *workerPool) WaitWorkers() error {
 	a.workersWG.Wait()
 

@@ -27,15 +27,15 @@ func realMain() int {
 			InitialNumProducers: 1,
 			WorkQueueDepth:      10,
 		},
-		workerpool.Handlers{
-			Reload: nil,
-		},
-		workerpool.Threads{
+		workerpool.Factories{
 			ProducerFactory: &pf,
 			WorkerFactory:   &wf,
 		},
+		workerpool.Handlers{
+			Reload: nil,
+		},
 	)
-	defer app.Stop()
+	defer app.InitiateShutdown()
 
 	if err := runSignalHandler(app); err != nil {
 		fmt.Printf("unable to launch signal handler: %v", err)
