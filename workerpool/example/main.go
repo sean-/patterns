@@ -18,22 +18,6 @@ func main() {
 	os.Exit(realMain())
 }
 
-type realTask struct {
-	finishFn func()
-}
-
-func (rt *realTask) DoWork() {
-	time.Sleep(1 * time.Second)
-}
-
-type canaryTask struct {
-	finishFn func()
-}
-
-func (ct *canaryTask) DoWork() {
-	time.Sleep(10 * time.Millisecond)
-}
-
 type producer struct {
 	queue         workerpool.SubmissionQueue
 	submittedWork uint64
@@ -47,11 +31,11 @@ type producer struct {
 	// exceeded
 	backoffDuration time.Duration
 
-	realTaskLock  sync.Mutex
+	taskRealLock  sync.Mutex
 	maxRealTasks  uint64
 	currRealTasks uint64
 
-	canaryTaskLock  sync.Mutex
+	taskCanaryLock  sync.Mutex
 	maxCanaryTasks  uint64
 	currCanaryTasks uint64
 }
@@ -64,41 +48,41 @@ STOP_PRODUCING_WORK:
 	for remainingWork > 0 {
 		var task workerpool.Task
 
-		p.realTaskLock.Lock()
+		p.taskRealLock.Lock()
 		if p.currRealTasks < p.maxRealTasks {
 			p.currRealTasks++
-			p.realTaskLock.Unlock()
+			p.taskRealLock.Unlock()
 			taskID := remainingWork
 			_ = taskID
-			rt := &realTask{
+			rt := &taskReal{
 				finishFn: func() {
-					p.realTaskLock.Lock()
-					defer p.realTaskLock.Unlock()
+					p.taskRealLock.Lock()
+					defer p.taskRealLock.Unlock()
 					p.currRealTasks--
 				},
 			}
 			task = rt
 		} else {
-			p.realTaskLock.Unlock()
+			p.taskRealLock.Unlock()
 		}
 
 		if task == nil {
-			p.canaryTaskLock.Lock()
+			p.taskCanaryLock.Lock()
 			if p.currCanaryTasks < p.maxCanaryTasks {
 				p.currCanaryTasks++
-				p.canaryTaskLock.Unlock()
+				p.taskCanaryLock.Unlock()
 				taskID := remainingWork
 				_ = taskID
-				ct := &canaryTask{
+				ct := &taskCanary{
 					finishFn: func() {
-						p.canaryTaskLock.Lock()
-						defer p.canaryTaskLock.Unlock()
+						p.taskCanaryLock.Lock()
+						defer p.taskCanaryLock.Unlock()
 						p.currCanaryTasks--
 					},
 				}
 				task = ct
 			} else {
-				p.canaryTaskLock.Unlock()
+				p.taskCanaryLock.Unlock()
 			}
 		}
 
@@ -177,11 +161,11 @@ CHANNEL_CLOSED:
 			w.completed++
 
 			switch task := t.(type) {
-			case *realTask:
+			case *taskReal:
 				task.DoWork()
 				task.finishFn()
 				w.workCompletedReal++
-			case *canaryTask:
+			case *taskCanary:
 				task.DoWork()
 				task.finishFn()
 				w.workCompletedCanary++
