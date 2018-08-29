@@ -15,10 +15,10 @@ type workerPool struct {
 	producersWG *sync.WaitGroup
 	consumersWG *sync.WaitGroup
 
-	signalLock  sync.Mutex
-	shutdownFn  func()
-	shutdownCtx context.Context
-	shutdown    bool
+	signalLock   sync.Mutex
+	shutdownFunc func()
+	shutdownCtx  context.Context
+	shutdown     bool
 
 	cfg       Config
 	factories Factories
@@ -27,14 +27,13 @@ type workerPool struct {
 
 // New creates a new workerpool populated with Config, Handlers, and Factories.
 func New(appCfg Config, factories Factories, handlers Handlers) *workerPool {
-	ctx, cancel := context.WithCancel(context.Background())
 	app := &workerPool{
 		submissionQueue: make(SubmissionQueue, appCfg.WorkQueueDepth),
 		producersWG:     &sync.WaitGroup{},
 		consumersWG:     &sync.WaitGroup{},
 
-		shutdownFn:  cancel,
-		shutdownCtx: ctx,
+		shutdownFunc: handlers.ShutdownFunc,
+		shutdownCtx:  handlers.ShutdownCtx,
 
 		cfg:       deepcopy.Copy(appCfg).(Config),
 		factories: factories,
@@ -54,7 +53,7 @@ func (a *workerPool) InitiateShutdown() (bool, error) {
 		return false, nil
 	}
 
-	a.shutdownFn()
+	a.shutdownFunc()
 	a.shutdown = true
 
 	return true, nil
@@ -65,8 +64,8 @@ func (a *workerPool) Reload() {
 	a.signalLock.Lock()
 	defer a.signalLock.Unlock()
 
-	if a.handlers.Reload != nil {
-		a.handlers.Reload()
+	if a.handlers.ReloadFunc != nil {
+		a.handlers.ReloadFunc()
 	}
 }
 

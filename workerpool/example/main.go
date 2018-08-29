@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/signal"
@@ -21,6 +22,9 @@ func realMain() int {
 	wf := &consumerFactory{}
 	pf := &producerFactory{}
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	app := workerpool.New(
 		workerpool.Config{
 			InitialNumConsumers: 5,
@@ -32,10 +36,11 @@ func realMain() int {
 			ConsumerFactory: wf,
 		},
 		workerpool.Handlers{
-			Reload: nil,
+			ReloadFunc:   nil,
+			ShutdownCtx:  ctx,
+			ShutdownFunc: cancel,
 		},
 	)
-	defer app.InitiateShutdown()
 
 	if err := runSignalHandler(app); err != nil {
 		fmt.Printf("unable to launch signal handler: %v", err)

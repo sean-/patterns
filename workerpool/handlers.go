@@ -1,9 +1,15 @@
 package workerpool
 
+import "context"
+
 type Handlers struct {
-	Reload                func()
+	ReloadFunc   func()
+	ShutdownFunc func()
+	ShutdownCtx  context.Context
+
 	ProducerFactoryNewErr func(error)
-	ProducerRunErr        func(error) (resumable bool)
-	ConsumerRunErr        func(error) (resumable bool)
 	ConsumerFactoryNewErr func(error)
+
+	ProducerRunErr func(error) (resumable bool)
+	ConsumerRunErr func(error) (resumable bool)
 }
