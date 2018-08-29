@@ -2,6 +2,6 @@ package workerpool
 
 import "context"
 
-type Worker interface {
+type Consumer interface {
 	Run(context.Context, ThreadID) error
 }

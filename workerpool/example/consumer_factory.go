@@ -6,7 +6,7 @@ import (
 	"github.com/sean-/patterns/workerpool"
 )
 
-type workerFactory struct {
+type consumerFactory struct {
 	lock                sync.Mutex
 	completed           uint64
 	stalls              uint64
@@ -14,12 +14,12 @@ type workerFactory struct {
 	workCompletedReal   uint64
 }
 
-func (wf *workerFactory) New(q workerpool.SubmissionQueue) (workerpool.Worker, error) {
-	return &worker{queue: q}, nil
+func (wf *consumerFactory) New(q workerpool.SubmissionQueue) (workerpool.Consumer, error) {
+	return &consumer{queue: q}, nil
 }
 
-func (wf *workerFactory) Finished(threadID workerpool.ThreadID, workerIface workerpool.Worker) {
-	w := workerIface.(*worker)
+func (wf *consumerFactory) Finished(threadID workerpool.ThreadID, consumerIface workerpool.Consumer) {
+	w := consumerIface.(*consumer)
 
 	wf.lock.Lock()
 	defer wf.lock.Unlock()

@@ -13,7 +13,7 @@ type workerPool struct {
 	submissionQueue SubmissionQueue
 
 	producersWG *sync.WaitGroup
-	workersWG   *sync.WaitGroup
+	consumersWG *sync.WaitGroup
 
 	signalLock  sync.Mutex
 	shutdownFn  func()
@@ -31,7 +31,7 @@ func New(appCfg Config, factories Factories, handlers Handlers) *workerPool {
 	app := &workerPool{
 		submissionQueue: make(SubmissionQueue, appCfg.WorkQueueDepth),
 		producersWG:     &sync.WaitGroup{},
-		workersWG:       &sync.WaitGroup{},
+		consumersWG:     &sync.WaitGroup{},
 
 		shutdownFn:  cancel,
 		shutdownCtx: ctx,
@@ -111,33 +111,33 @@ func (a *workerPool) StartProducers() error {
 	return nil
 }
 
-// StartWorkers starts the worker pool
-func (a *workerPool) StartWorkers() error {
-	for i := a.cfg.InitialNumWorkers; i > 0; i-- {
-		a.workersWG.Add(1)
+// StartConsumers starts the worker pool
+func (a *workerPool) StartConsumers() error {
+	for i := a.cfg.InitialNumConsumers; i > 0; i-- {
+		a.consumersWG.Add(1)
 		go func(i uint) {
-			defer a.workersWG.Done()
+			defer a.consumersWG.Done()
 			threadID := ThreadID(i)
-			worker, err := a.factories.WorkerFactory.New(a.submissionQueue)
+			consumer, err := a.factories.ConsumerFactory.New(a.submissionQueue)
 			if err != nil {
-				if a.handlers.WorkerFactoryNewErr == nil {
-					panic(fmt.Sprintf("error creating a new worker %d: %v", i, err))
+				if a.handlers.ConsumerFactoryNewErr == nil {
+					panic(fmt.Sprintf("error creating a new consumer %d: %v", i, err))
 				}
 
-				a.handlers.WorkerFactoryNewErr(err)
+				a.handlers.ConsumerFactoryNewErr(err)
 			}
 
-			if err := worker.Run(a.shutdownCtx, threadID); err != nil {
-				if a.handlers.WorkerRunErr == nil {
-					panic(fmt.Sprintf("error starting worker thread %d: %v", i, err))
+			if err := consumer.Run(a.shutdownCtx, threadID); err != nil {
+				if a.handlers.ConsumerRunErr == nil {
+					panic(fmt.Sprintf("error starting consumer thread %d: %v", i, err))
 				}
 
-				if resume := a.handlers.WorkerRunErr(err); !resume {
+				if resume := a.handlers.ConsumerRunErr(err); !resume {
 					return
 				}
 			}
 
-			a.factories.WorkerFactory.Finished(threadID, worker)
+			a.factories.ConsumerFactory.Finished(threadID, consumer)
 		}(i)
 	}
 
@@ -155,8 +155,8 @@ func (a *workerPool) WaitProducers() error {
 
 // WaitProducers blocks until all producers have exited or ShutdownCtx has been
 // closed.
-func (a *workerPool) WaitWorkers() error {
-	a.workersWG.Wait()
+func (a *workerPool) WaitConsumers() error {
+	a.consumersWG.Wait()
 
 	return nil
 }

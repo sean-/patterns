@@ -6,5 +6,5 @@ type ThreadID int
 // Factories is a container for different types of factories
 type Factories struct {
 	ProducerFactory ProducerFactory
-	WorkerFactory   WorkerFactory
+	ConsumerFactory ConsumerFactory
 }

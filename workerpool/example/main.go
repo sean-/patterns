@@ -18,18 +18,18 @@ func main() {
 func realMain() int {
 	seed.MustInit()
 
-	wf := &workerFactory{}
+	wf := &consumerFactory{}
 	pf := &producerFactory{}
 
 	app := workerpool.New(
 		workerpool.Config{
-			InitialNumWorkers:   5,
+			InitialNumConsumers: 5,
 			InitialNumProducers: 1,
 			WorkQueueDepth:      10,
 		},
 		workerpool.Factories{
 			ProducerFactory: pf,
-			WorkerFactory:   wf,
+			ConsumerFactory: wf,
 		},
 		workerpool.Handlers{
 			Reload: nil,
@@ -48,11 +48,11 @@ func realMain() int {
 	}
 	fmt.Println("started producers")
 
-	if err := app.StartWorkers(); err != nil {
-		fmt.Printf("unable to start the workerpool workers: %v", err)
+	if err := app.StartConsumers(); err != nil {
+		fmt.Printf("unable to start the workerpool consumers: %v", err)
 		return sysexits.Software
 	}
-	fmt.Println("started workers")
+	fmt.Println("started consumers")
 
 	if err := app.WaitProducers(); err != nil {
 		fmt.Printf("error waiting for workpool producers: %v", err)
@@ -60,18 +60,18 @@ func realMain() int {
 	}
 	fmt.Println("finished waiting for producers")
 
-	if err := app.WaitWorkers(); err != nil {
+	if err := app.WaitConsumers(); err != nil {
 		fmt.Printf("error waiting for the workerpool to drain: %v", err)
 		return sysexits.Software
 	}
-	fmt.Println("finished waiting for workers")
+	fmt.Println("finished waiting for consumers")
 
 	fmt.Printf("Work Submitted: %d\n", pf.submittedWork)
 	fmt.Printf("Work Completed: %d\n", wf.completed)
 	fmt.Printf("  Real Work Completed:   %d\n", wf.workCompletedReal)
 	fmt.Printf("  Canary Work Completed: %d\n", wf.workCompletedCanary)
 	fmt.Printf("Producer Stalls: %d\n", pf.stalls)
-	fmt.Printf("Worker Stalls: %d\n", wf.stalls)
+	fmt.Printf("Consumer Stalls: %d\n", wf.stalls)
 
 	return sysexits.OK
 }
