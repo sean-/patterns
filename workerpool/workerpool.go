@@ -8,6 +8,13 @@ import (
 	"github.com/mohae/deepcopy"
 )
 
+// Config is the initial configuration of the workerpool
+type Config struct {
+	InitialNumProducers uint
+	InitialNumConsumers uint
+	WorkQueueDepth      uint
+}
+
 // workerPool is a private type that can only be created via New
 type workerPool struct {
 	submissionQueue SubmissionQueue
