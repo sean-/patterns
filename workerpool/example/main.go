@@ -2,11 +2,12 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
+	"github.com/rs/zerolog"
 	"github.com/sean-/patterns/workerpool"
 	"github.com/sean-/seed"
 	"github.com/sean-/sysexits"
@@ -31,11 +32,20 @@ func main() {
 func realMain() int {
 	seed.MustInit()
 
-	wf := &consumerFactory{}
-	pf := &producerFactory{}
-
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	const logTimeFormat = "2006-01-02T15:04:05.000000000Z07:00"
+
+	zerolog.DurationFieldUnit = time.Microsecond
+	zerolog.DurationFieldInteger = true
+	zerolog.TimeFieldFormat = logTimeFormat
+
+	log := zerolog.New(zerolog.ConsoleWriter{Out: os.Stdout}).
+		With().Timestamp().Logger()
+
+	pf := NewProducerFactory(log)
+	cf := NewConsumerFactory(log)
 
 	app := workerpool.New(
 		workerpool.Config{
@@ -45,7 +55,7 @@ func realMain() int {
 		},
 		workerpool.Factories{
 			ProducerFactory: pf,
-			ConsumerFactory: wf,
+			ConsumerFactory: cf,
 		},
 		workerpool.Handlers{
 			ReloadFunc:   nil,
@@ -54,46 +64,46 @@ func realMain() int {
 		},
 	)
 
-	if err := runSignalHandler(app); err != nil {
-		fmt.Printf("unable to launch signal handler: %v", err)
+	if err := runSignalHandler(log, app); err != nil {
+		log.Error().Err(err).Msg("unable to launch signal handler")
 		return sysexits.Software
 	}
 
 	if err := app.StartProducers(); err != nil {
-		fmt.Printf("unable to start the workerpool producers: %v", err)
+		log.Error().Err(err).Msg("unable to start the workerpool producers")
 		return sysexits.Software
 	}
-	fmt.Println("started producers")
+	log.Info().Msg("started producers")
 
 	if err := app.StartConsumers(); err != nil {
-		fmt.Printf("unable to start the workerpool consumers: %v", err)
+		log.Error().Err(err).Msg("unable to start the workerpool consumers")
 		return sysexits.Software
 	}
-	fmt.Println("started consumers")
+	log.Info().Msg("started consumers")
 
 	if err := app.WaitProducers(); err != nil {
-		fmt.Printf("error waiting for workpool producers: %v", err)
+		log.Error().Err(err).Msg("error waiting for workpool producers")
 		return sysexits.Software
 	}
-	fmt.Println("finished waiting for producers")
+	log.Info().Msg("finished waiting for producers")
 
 	if err := app.WaitConsumers(); err != nil {
-		fmt.Printf("error waiting for the workerpool to drain: %v", err)
+		log.Error().Err(err).Msg("error waiting for the workerpool to drain")
 		return sysexits.Software
 	}
-	fmt.Println("finished waiting for consumers")
+	log.Info().Msg("finished waiting for consumers")
 
-	fmt.Printf("Work Submitted: %d\n", pf.submittedWork)
-	fmt.Printf("Work Completed: %d\n", wf.completed)
-	fmt.Printf("  Real Work Completed:   %d\n", wf.workCompletedReal)
-	fmt.Printf("  Canary Work Completed: %d\n", wf.workCompletedCanary)
-	fmt.Printf("Producer Stalls: %d\n", pf.stalls)
-	fmt.Printf("Consumer Stalls: %d\n", wf.stalls)
+	log.Info().Msgf("Work Submitted: %d", pf.submittedWork)
+	log.Info().Msgf("Work Completed: %d", cf.completed)
+	log.Info().Msgf("\tReal Work Completed:   %d", cf.workCompletedReal)
+	log.Info().Msgf("\tCanary Work Completed: %d", cf.workCompletedCanary)
+	log.Info().Msgf("Producer Stalls: %d", pf.stalls)
+	log.Info().Msgf("Consumer Stalls: %d", cf.stalls)
 
 	return sysexits.OK
 }
 
-func runSignalHandler(wp Interface) error {
+func runSignalHandler(log zerolog.Logger, wp Interface) error {
 	sigCh := make(chan os.Signal, 5)
 
 	signal.Notify(sigCh,
@@ -108,16 +118,16 @@ func runSignalHandler(wp Interface) error {
 		for {
 			select {
 			case <-wp.ShutdownCtx().Done():
-				fmt.Println("shutdown initiated, terminating signal handler")
+				log.Info().Msg("shutdown initiated, terminating signal handler")
 				wp.InitiateShutdown()
 				return
 			case sig := <-sigCh:
 				switch sig {
 				case syscall.SIGHUP:
-					fmt.Printf("received %s, reloading\n", sig)
+					log.Info().Msgf("received %s, reloading", sig)
 					wp.Reload()
 				case syscall.SIGINT, syscall.SIGQUIT, syscall.SIGTERM:
-					fmt.Printf("received %s, shutting down\n", sig)
+					log.Info().Msgf("received %s, shutting down", sig)
 					wp.InitiateShutdown()
 					return
 				}

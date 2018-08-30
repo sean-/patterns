@@ -4,48 +4,51 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/rs/zerolog"
 	"github.com/sean-/patterns/workerpool"
 )
 
 type consumer struct {
+	log zerolog.Logger
+
 	queue               workerpool.SubmissionQueue
 	completed           uint64
 	workCompletedReal   uint64
 	workCompletedCanary uint64
 }
 
-func newConsumer(q workerpool.SubmissionQueue) *consumer {
-	return &consumer{queue: q}
-}
-
-func (w *consumer) Run(ctx context.Context, tid workerpool.ThreadID) error {
+func (c *consumer) Run(ctx context.Context, tid workerpool.ThreadID) error {
 EXIT:
 	for {
 		select {
 		case <-ctx.Done():
-			fmt.Printf("consumer[%d]: shutting down\n", tid)
+			c.log.Debug().Msgf("consumer[%d]: shutting down", tid)
 			break EXIT
-		case t, ok := <-w.queue:
+		case t, ok := <-c.queue:
 			if !ok {
 				break EXIT // channel closed
 			}
-			w.completed++
+			c.completed++
 
 			switch task := t.(type) {
 			case *taskReal:
+				c.log.Debug().Msgf("consumer[%d]: received real work task", tid)
+
 				task.DoWork()
 				task.finishFn()
-				w.workCompletedReal++
+				c.workCompletedReal++
 			case *taskCanary:
+				c.log.Debug().Msgf("consumer[%d]: received canary work task", tid)
+
 				task.DoWork()
 				task.finishFn()
-				w.workCompletedCanary++
+				c.workCompletedCanary++
 			default:
 				panic(fmt.Sprintf("invalid type: %v", task))
 			}
 		}
 	}
-	//fmt.Printf("consumer[%d]: exiting: completed %d, stalled %d times\n", tid, w.completed, w.stalls)
+	c.log.Debug().Msgf("consumer[%d]: exiting: completed %d times\n", tid, c.completed)
 
 	return nil
 }
