@@ -34,19 +34,15 @@ type producer struct {
 }
 
 func (p *producer) Run(ctx context.Context, tid workerpool.ThreadID) error {
-	const desiredWorkCount = 100
-	remainingWork := desiredWorkCount
-
 EXIT:
-	for remainingWork > 0 {
+	for {
 		var task workerpool.Task
 
 		p.taskRealLock.Lock()
 		if p.currRealTasks < p.maxRealTasks {
 			p.currRealTasks++
 			p.taskRealLock.Unlock()
-			taskID := remainingWork
-			_ = taskID
+
 			rt := &taskReal{
 				finishFn: func() {
 					p.taskRealLock.Lock()
@@ -64,8 +60,7 @@ EXIT:
 			if p.currCanaryTasks < p.maxCanaryTasks {
 				p.currCanaryTasks++
 				p.taskCanaryLock.Unlock()
-				taskID := remainingWork
-				_ = taskID
+
 				ct := &taskCanary{
 					finishFn: func() {
 						p.taskCanaryLock.Lock()
@@ -91,8 +86,7 @@ EXIT:
 			break EXIT
 		case p.queue <- task:
 			p.submittedWork++
-			remainingWork--
-			p.log.Debug().Msgf("producer[%d]: added a work item: %d remaining", tid, remainingWork)
+			p.log.Debug().Msgf("producer[%d]: added a work item", tid)
 			time.Sleep(p.pacingDuration)
 		default:
 			p.log.Debug().Msgf("unable to add an item to the work queue, it's full: %d", len(p.queue))
@@ -105,8 +99,6 @@ EXIT:
 				break EXIT
 			case p.queue <- task:
 				p.submittedWork++
-				remainingWork--
-
 				// Smooth out the pacing
 				stallDuration := time.Now().Sub(blockedAt)
 				if stallDuration < p.pacingDuration {
@@ -115,7 +107,7 @@ EXIT:
 			}
 		}
 	}
-	p.log.Debug().Msgf("producer[%d]: exiting: competed %d, stalled %d times", tid, desiredWorkCount-remainingWork, p.stalls)
+	p.log.Debug().Msgf("producer[%d]: exiting: submitted %d, stalled %d times", tid, p.submittedWork, p.stalls)
 
 	return nil
 }
