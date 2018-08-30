@@ -15,8 +15,8 @@ type Config struct {
 	WorkQueueDepth      uint
 }
 
-// workerPool is a private type that can only be created via New
-type workerPool struct {
+// WorkerPool represents and manages the entire worker pool.
+type WorkerPool struct {
 	submissionQueue SubmissionQueue
 
 	producersWG *sync.WaitGroup
@@ -33,8 +33,8 @@ type workerPool struct {
 }
 
 // New creates a new workerpool populated with Config, Handlers, and Factories.
-func New(appCfg Config, factories Factories, handlers Handlers) *workerPool {
-	app := &workerPool{
+func New(appCfg Config, factories Factories, handlers Handlers) *WorkerPool {
+	app := &WorkerPool{
 		submissionQueue: make(SubmissionQueue, appCfg.WorkQueueDepth),
 		producersWG:     &sync.WaitGroup{},
 		consumersWG:     &sync.WaitGroup{},
@@ -52,7 +52,7 @@ func New(appCfg Config, factories Factories, handlers Handlers) *workerPool {
 
 // InitiateShutdown starts the shutdown process if a shutdown has not already
 // been initiated.  Returns true if the shutdown was started.
-func (a *workerPool) InitiateShutdown() (bool, error) {
+func (a *WorkerPool) InitiateShutdown() (bool, error) {
 	a.signalLock.Lock()
 	defer a.signalLock.Unlock()
 
@@ -67,7 +67,7 @@ func (a *workerPool) InitiateShutdown() (bool, error) {
 }
 
 // Reload calls the reload handler, if set
-func (a *workerPool) Reload() {
+func (a *WorkerPool) Reload() {
 	a.signalLock.Lock()
 	defer a.signalLock.Unlock()
 
@@ -78,14 +78,14 @@ func (a *workerPool) Reload() {
 
 // ShutdownCtx returns the shutdown context for the workerpool (shared between
 // producers and workers).
-func (a *workerPool) ShutdownCtx() context.Context {
+func (a *WorkerPool) ShutdownCtx() context.Context {
 	return a.shutdownCtx
 }
 
 // StartProducers spawns InitialNumProducers and calls Producer.Run() for each
 // Producer.  If Producer.Run() returns an error, Handlers.ProducerRunErr() is
 // called.  If ProducerRunErr() is nil, panic() is called instead.
-func (a *workerPool) StartProducers() error {
+func (a *WorkerPool) StartProducers() error {
 	for i := a.cfg.InitialNumProducers; i > 0; i-- {
 		a.producersWG.Add(1)
 		go func(i uint) {
@@ -118,7 +118,7 @@ func (a *workerPool) StartProducers() error {
 }
 
 // StartConsumers starts the worker pool
-func (a *workerPool) StartConsumers() error {
+func (a *WorkerPool) StartConsumers() error {
 	for i := a.cfg.InitialNumConsumers; i > 0; i-- {
 		a.consumersWG.Add(1)
 		go func(i uint) {
@@ -152,7 +152,7 @@ func (a *workerPool) StartConsumers() error {
 
 // WaitProducers blocks until all producers have exited or ShutdownCtx has been
 // closed.  WaitProducers closes the submission queue.
-func (a *workerPool) WaitProducers() error {
+func (a *WorkerPool) WaitProducers() error {
 	a.producersWG.Wait()
 	close(a.submissionQueue)
 
@@ -161,7 +161,7 @@ func (a *workerPool) WaitProducers() error {
 
 // WaitProducers blocks until all producers have exited or ShutdownCtx has been
 // closed.
-func (a *workerPool) WaitConsumers() error {
+func (a *WorkerPool) WaitConsumers() error {
 	a.consumersWG.Wait()
 
 	return nil
