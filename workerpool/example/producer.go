@@ -2,14 +2,16 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	"time"
 
+	"github.com/rs/zerolog"
 	"github.com/sean-/patterns/workerpool"
 )
 
 type producer struct {
+	log zerolog.Logger
+
 	queue         workerpool.SubmissionQueue
 	submittedWork uint64
 	stalls        uint64
@@ -32,19 +34,15 @@ type producer struct {
 }
 
 func (p *producer) Run(ctx context.Context, tid workerpool.ThreadID) error {
-	const desiredWorkCount = 100
-	remainingWork := desiredWorkCount
-
 EXIT:
-	for remainingWork > 0 {
+	for {
 		var task workerpool.Task
 
 		p.taskRealLock.Lock()
 		if p.currRealTasks < p.maxRealTasks {
 			p.currRealTasks++
 			p.taskRealLock.Unlock()
-			taskID := remainingWork
-			_ = taskID
+
 			rt := &taskReal{
 				finishFn: func() {
 					p.taskRealLock.Lock()
@@ -62,8 +60,7 @@ EXIT:
 			if p.currCanaryTasks < p.maxCanaryTasks {
 				p.currCanaryTasks++
 				p.taskCanaryLock.Unlock()
-				taskID := remainingWork
-				_ = taskID
+
 				ct := &taskCanary{
 					finishFn: func() {
 						p.taskCanaryLock.Lock()
@@ -78,22 +75,21 @@ EXIT:
 		}
 
 		if task == nil {
-			//fmt.Printf("producer[%d]: backing off, too much work in-flight\n", tid)
+			p.log.Debug().Msgf("producer[%d]: backing off, too much work in-flight", tid)
 			time.Sleep(p.backoffDuration)
 			continue
 		}
 
 		select {
 		case <-ctx.Done():
-			//fmt.Printf("producer[%d]: shutting down\n", tid)
+			p.log.Info().Msgf("producer[%d]: shutting down", tid)
 			break EXIT
 		case p.queue <- task:
 			p.submittedWork++
-			remainingWork--
-			//fmt.Printf("producer[%d]: added a work item: %d remaining\n", tid, remainingWork)
+			p.log.Debug().Msgf("producer[%d]: added a work item", tid)
 			time.Sleep(p.pacingDuration)
 		default:
-			fmt.Printf("unable to add an item to the work queue, it's full: %d\n", len(p.queue))
+			p.log.Debug().Msgf("unable to add an item to the work queue, it's full: %d", len(p.queue))
 			p.stalls++
 
 			// Make a blocking write now that we've recorded the stall
@@ -103,8 +99,6 @@ EXIT:
 				break EXIT
 			case p.queue <- task:
 				p.submittedWork++
-				remainingWork--
-
 				// Smooth out the pacing
 				stallDuration := time.Now().Sub(blockedAt)
 				if stallDuration < p.pacingDuration {
@@ -113,7 +107,7 @@ EXIT:
 			}
 		}
 	}
-	//fmt.Printf("producer[%d]: exiting: competed %d, stalled %d times\n", tid, desiredWorkCount-remainingWork, p.stalls)
+	p.log.Debug().Msgf("producer[%d]: exiting: submitted %d, stalled %d times", tid, p.submittedWork, p.stalls)
 
 	return nil
 }

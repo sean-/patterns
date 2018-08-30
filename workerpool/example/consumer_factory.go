@@ -3,10 +3,13 @@ package main
 import (
 	"sync"
 
+	"github.com/rs/zerolog"
 	"github.com/sean-/patterns/workerpool"
 )
 
 type consumerFactory struct {
+	log zerolog.Logger
+
 	lock                sync.Mutex
 	completed           uint64
 	stalls              uint64
@@ -14,16 +17,25 @@ type consumerFactory struct {
 	workCompletedReal   uint64
 }
 
-func (wf *consumerFactory) New(q workerpool.SubmissionQueue) (workerpool.Consumer, error) {
-	return &consumer{queue: q}, nil
+func NewConsumerFactory(log zerolog.Logger) *consumerFactory {
+	return &consumerFactory{
+		log: log,
+	}
 }
 
-func (wf *consumerFactory) Finished(threadID workerpool.ThreadID, consumerIface workerpool.Consumer) {
+func (cf *consumerFactory) New(q workerpool.SubmissionQueue) (workerpool.Consumer, error) {
+	return &consumer{
+		log:   cf.log,
+		queue: q,
+	}, nil
+}
+
+func (cf *consumerFactory) Finished(threadID workerpool.ThreadID, consumerIface workerpool.Consumer) {
 	w := consumerIface.(*consumer)
 
-	wf.lock.Lock()
-	defer wf.lock.Unlock()
-	wf.workCompletedCanary += w.workCompletedCanary
-	wf.completed += w.completed
-	wf.workCompletedReal += w.workCompletedReal
+	cf.lock.Lock()
+	defer cf.lock.Unlock()
+	cf.workCompletedCanary += w.workCompletedCanary
+	cf.completed += w.completed
+	cf.workCompletedReal += w.workCompletedReal
 }
