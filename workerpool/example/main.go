@@ -13,18 +13,6 @@ import (
 	"github.com/sean-/sysexits"
 )
 
-// Interface is the workerpool interface that is exported
-type Interface interface {
-	// ShutdownCtx is the shutdown context, used to poll for the status of shutdown
-	ShutdownCtx() context.Context
-
-	// InitiateShutdown cancels the context used to signal its time to shut down
-	InitiateShutdown() (bool, error)
-
-	// Reload is a configuration reload handler (e.g. for use with SIGHUP)
-	Reload()
-}
-
 func main() {
 	os.Exit(realMain())
 }
@@ -103,7 +91,7 @@ func realMain() int {
 	return sysexits.OK
 }
 
-func runSignalHandler(log zerolog.Logger, wp Interface) error {
+func runSignalHandler(log zerolog.Logger, wp workerpool.Interface) error {
 	sigCh := make(chan os.Signal, 5)
 
 	signal.Notify(sigCh,
