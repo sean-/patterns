@@ -22,10 +22,11 @@ func NewProducerFactory(log zerolog.Logger) *producerFactory {
 	}
 }
 
-func (pf *producerFactory) New(q workerpool.SubmissionQueue) (workerpool.Producer, error) {
+func (pf *producerFactory) New(tid workerpool.ThreadID, q workerpool.SubmissionQueue) (workerpool.Producer, error) {
 	const maxRealTasks = 10
 	p := &producer{
 		log:             pf.log,
+		tid:             tid,
 		queue:           q,
 		pacingDuration:  1 * time.Millisecond,
 		backoffDuration: 100 * time.Millisecond,
@@ -36,7 +37,7 @@ func (pf *producerFactory) New(q workerpool.SubmissionQueue) (workerpool.Produce
 	return p, nil
 }
 
-func (pf *producerFactory) Finished(threadID workerpool.ThreadID, producerIface workerpool.Producer) {
+func (pf *producerFactory) Finished(tid workerpool.ThreadID, producerIface workerpool.Producer) {
 	p := producerIface.(*producer)
 
 	pf.lock.Lock()

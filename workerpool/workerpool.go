@@ -91,7 +91,7 @@ func (a *workerPool) StartProducers() error {
 		go func(i uint) {
 			defer a.producersWG.Done()
 			threadID := ThreadID(i)
-			producer, err := a.factories.ProducerFactory.New(a.submissionQueue)
+			producer, err := a.factories.ProducerFactory.New(threadID, a.submissionQueue)
 			if err != nil {
 				if a.handlers.ProducerFactoryNewErr == nil {
 					panic(fmt.Sprintf("error creating a new producer %d: %v", i, err))
@@ -100,7 +100,7 @@ func (a *workerPool) StartProducers() error {
 				a.handlers.ProducerFactoryNewErr(err)
 			}
 
-			if err := producer.Run(a.shutdownCtx, threadID); err != nil {
+			if err := producer.Run(a.shutdownCtx); err != nil {
 				if a.handlers.ProducerRunErr == nil {
 					panic(fmt.Sprintf("error starting producer thread %d: %v", i, err))
 				}
@@ -124,7 +124,7 @@ func (a *workerPool) StartConsumers() error {
 		go func(i uint) {
 			defer a.consumersWG.Done()
 			threadID := ThreadID(i)
-			consumer, err := a.factories.ConsumerFactory.New(a.submissionQueue)
+			consumer, err := a.factories.ConsumerFactory.New(threadID, a.submissionQueue)
 			if err != nil {
 				if a.handlers.ConsumerFactoryNewErr == nil {
 					panic(fmt.Sprintf("error creating a new consumer %d: %v", i, err))
@@ -133,7 +133,7 @@ func (a *workerPool) StartConsumers() error {
 				a.handlers.ConsumerFactoryNewErr(err)
 			}
 
-			if err := consumer.Run(a.shutdownCtx, threadID); err != nil {
+			if err := consumer.Run(a.shutdownCtx); err != nil {
 				if a.handlers.ConsumerRunErr == nil {
 					panic(fmt.Sprintf("error starting consumer thread %d: %v", i, err))
 				}
