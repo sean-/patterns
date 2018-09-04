@@ -24,6 +24,8 @@ func NewProducerFactory(log zerolog.Logger) *producerFactory {
 
 func (pf *producerFactory) New(tid workerpool.ThreadID, q workerpool.SubmissionQueue) (workerpool.Producer, error) {
 	const maxRealTasks = 10
+	// NOTE: set this to initiate shutdown after a max number of task errors
+	const maxErrTasks = 0
 	p := &producer{
 		log:             pf.log,
 		tid:             tid,
@@ -32,7 +34,7 @@ func (pf *producerFactory) New(tid workerpool.ThreadID, q workerpool.SubmissionQ
 		backoffDuration: 100 * time.Millisecond,
 		maxRealTasks:    maxRealTasks,
 		maxCanaryTasks:  1000 - maxRealTasks,
-		maxErrTasks:     5,
+		maxErrTasks:     maxErrTasks,
 	}
 
 	return p, nil
