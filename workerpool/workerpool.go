@@ -100,7 +100,7 @@ func (a *workerPool) StartProducers() error {
 				a.handlers.ProducerFactoryNewErr(err)
 			}
 
-			if err := producer.Run(a.shutdownCtx); err != nil {
+			if err := producer.Run(a.shutdownCtx, a.shutdownFunc); err != nil {
 				if a.handlers.ProducerRunErr == nil {
 					panic(fmt.Sprintf("error starting producer thread %d: %v", i, err))
 				}

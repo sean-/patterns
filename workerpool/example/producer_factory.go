@@ -32,6 +32,7 @@ func (pf *producerFactory) New(tid workerpool.ThreadID, q workerpool.SubmissionQ
 		backoffDuration: 100 * time.Millisecond,
 		maxRealTasks:    maxRealTasks,
 		maxCanaryTasks:  1000 - maxRealTasks,
+		maxErrTasks:     5,
 	}
 
 	return p, nil
