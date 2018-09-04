@@ -82,9 +82,13 @@ func realMain() int {
 	log.Info().Msg("finished waiting for consumers")
 
 	log.Info().Msgf("Work Submitted: %d", pf.submittedWork)
-	log.Info().Msgf("Work Completed: %d", cf.completed)
+	log.Info().Msgf("Total Requested: %d", cf.workRequested)
+	log.Info().Msgf("Total Completed: %d", cf.completed)
+	log.Info().Msgf("Total Errors: %d", cf.errored)
 	log.Info().Msgf("\tReal Work Completed:   %d", cf.workCompletedReal)
 	log.Info().Msgf("\tCanary Work Completed: %d", cf.workCompletedCanary)
+	log.Info().Msgf("\tReal Work Errors:   %d", cf.workErrReal)
+	log.Info().Msgf("\tCanary Work Errors: %d", cf.workErrCanary)
 	log.Info().Msgf("Producer Stalls: %d", pf.stalls)
 	log.Info().Msgf("Consumer Stalls: %d", cf.stalls)
 

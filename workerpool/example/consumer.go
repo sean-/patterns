@@ -16,8 +16,11 @@ type consumer struct {
 	tid                 workerpool.ThreadID
 	queue               workerpool.SubmissionQueue
 	completed           uint64
+	workRequested       uint64
 	workCompletedReal   uint64
 	workCompletedCanary uint64
+	workErrReal         uint64
+	workErrCanary       uint64
 	rampDuration        time.Duration
 }
 
@@ -42,6 +45,7 @@ EXIT:
 			if !ok {
 				break EXIT // channel closed
 			}
+			c.workRequested++
 
 			// NOTE: this isn't just an example of ramp up but also any prestart
 			// function that only needs to run once initially for each consumer
@@ -49,20 +53,35 @@ EXIT:
 
 			switch task := t.(type) {
 			case *taskReal:
+				task.tid = c.tid
 				c.log.Debug().Msgf("consumer[%d]: received real work task", c.tid)
 
-				task.DoWork()
+				if err := task.DoWork(); err != nil {
+					c.log.Error().Err(err).Msg("failed to send real request")
+					c.workErrReal++
+					task.finishFn()
+					continue
+				}
+
 				task.finishFn()
 				c.workCompletedReal++
 			case *taskCanary:
+				task.tid = c.tid
 				c.log.Debug().Msgf("consumer[%d]: received canary work task", c.tid)
 
-				task.DoWork()
+				if err := task.DoWork(); err != nil {
+					c.log.Error().Err(err).Msg("failed to send real request")
+					c.workErrCanary++
+					task.finishFn()
+					continue
+				}
+
 				task.finishFn()
 				c.workCompletedCanary++
 			default:
 				panic(fmt.Sprintf("invalid type: %v", task))
 			}
+
 			c.completed++
 		}
 	}
