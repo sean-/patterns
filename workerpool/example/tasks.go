@@ -13,7 +13,7 @@ type taskReal struct {
 	log zerolog.Logger
 
 	tid      workerpool.ThreadID
-	finishFn func()
+	finishFn func(error)
 }
 
 func (rt *taskReal) DoWork() error {
@@ -29,7 +29,7 @@ type taskCanary struct {
 	log zerolog.Logger
 
 	tid      workerpool.ThreadID
-	finishFn func()
+	finishFn func(error)
 }
 
 func (ct *taskCanary) DoWork() error {

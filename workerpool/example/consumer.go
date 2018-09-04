@@ -53,30 +53,32 @@ EXIT:
 
 			switch task := t.(type) {
 			case *taskReal:
+				var err error
 				task.tid = c.tid
 				c.log.Debug().Msgf("consumer[%d]: received real work task", c.tid)
 
-				if err := task.DoWork(); err != nil {
+				if err = task.DoWork(); err != nil {
 					c.log.Error().Err(err).Msg("failed to send real request")
 					c.workErrReal++
-					task.finishFn()
+					task.finishFn(err)
 					continue
 				}
 
-				task.finishFn()
+				task.finishFn(err)
 				c.workCompletedReal++
 			case *taskCanary:
+				var err error
 				task.tid = c.tid
 				c.log.Debug().Msgf("consumer[%d]: received canary work task", c.tid)
 
-				if err := task.DoWork(); err != nil {
+				if err = task.DoWork(); err != nil {
 					c.log.Error().Err(err).Msg("failed to send real request")
 					c.workErrCanary++
-					task.finishFn()
+					task.finishFn(err)
 					continue
 				}
 
-				task.finishFn()
+				task.finishFn(err)
 				c.workCompletedCanary++
 			default:
 				panic(fmt.Sprintf("invalid type: %v", task))

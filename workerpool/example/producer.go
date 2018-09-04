@@ -29,12 +29,15 @@ type producer struct {
 	maxRealTasks  uint64
 	currRealTasks uint64
 
+	currErrTasks uint64
+	maxErrTasks  uint64
+
 	taskCanaryLock  sync.Mutex
 	maxCanaryTasks  uint64
 	currCanaryTasks uint64
 }
 
-func (p *producer) Run(ctx context.Context) error {
+func (p *producer) Run(ctx context.Context, cancel context.CancelFunc) error {
 EXIT:
 	for {
 		var task workerpool.Task
@@ -45,10 +48,23 @@ EXIT:
 			p.taskRealLock.Unlock()
 
 			rt := &taskReal{
-				finishFn: func() {
+				log: p.log,
+				finishFn: func(err error) {
 					p.taskRealLock.Lock()
 					defer p.taskRealLock.Unlock()
 					p.currRealTasks--
+
+					if p.maxErrTasks == 0 {
+						return
+					}
+
+					if err != nil {
+						p.currErrTasks++
+					}
+
+					if p.currErrTasks == p.maxErrTasks {
+						cancel()
+					}
 				},
 			}
 			task = rt
@@ -63,10 +79,22 @@ EXIT:
 				p.taskCanaryLock.Unlock()
 
 				ct := &taskCanary{
-					finishFn: func() {
+					finishFn: func(err error) {
 						p.taskCanaryLock.Lock()
 						defer p.taskCanaryLock.Unlock()
 						p.currCanaryTasks--
+
+						if p.maxErrTasks == 0 {
+							return
+						}
+
+						if err != nil {
+							p.currErrTasks++
+						}
+
+						if p.currErrTasks == p.maxErrTasks {
+							cancel()
+						}
 					},
 				}
 				task = ct

@@ -51,7 +51,7 @@ type SubmissionQueue chan Task
 
 // Producer is the producer of work across a pool of workers.
 type Producer interface {
-	Run(context.Context) error
+	Run(context.Context, context.CancelFunc) error
 }
 
 // ProducerFactory handles the construction of a new Producer.
