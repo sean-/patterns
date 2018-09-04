@@ -51,22 +51,22 @@ type SubmissionQueue chan Task
 
 // Producer is the producer of work across a pool of workers.
 type Producer interface {
-	Run(context.Context, ThreadID) error
+	Run(context.Context) error
 }
 
 // ProducerFactory handles the construction of a new Producer.
 type ProducerFactory interface {
-	New(SubmissionQueue) (Producer, error)
+	New(ThreadID, SubmissionQueue) (Producer, error)
 	Finished(ThreadID, Producer)
 }
 
 // Consumer executes a logical unit of work tasked by the Producer.
 type Consumer interface {
-	Run(context.Context, ThreadID) error
+	Run(context.Context) error
 }
 
 // ConsumerFactory handles the construction of a new Worker.
 type ConsumerFactory interface {
-	New(SubmissionQueue) (Consumer, error)
+	New(ThreadID, SubmissionQueue) (Consumer, error)
 	Finished(ThreadID, Consumer)
 }

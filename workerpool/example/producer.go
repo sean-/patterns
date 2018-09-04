@@ -12,6 +12,7 @@ import (
 type producer struct {
 	log zerolog.Logger
 
+	tid           workerpool.ThreadID
 	queue         workerpool.SubmissionQueue
 	submittedWork uint64
 	stalls        uint64
@@ -33,7 +34,7 @@ type producer struct {
 	currCanaryTasks uint64
 }
 
-func (p *producer) Run(ctx context.Context, tid workerpool.ThreadID) error {
+func (p *producer) Run(ctx context.Context) error {
 EXIT:
 	for {
 		var task workerpool.Task
@@ -75,23 +76,21 @@ EXIT:
 		}
 
 		if task == nil {
-			p.log.Debug().Msgf("producer[%d]: backing off, too much work in-flight", tid)
+			p.log.Debug().Msgf("producer[%d]: backing off, too much work in-flight", p.tid)
 			time.Sleep(p.backoffDuration)
 			continue
 		}
 
 		select {
 		case <-ctx.Done():
-			p.log.Info().Msgf("producer[%d]: shutting down", tid)
+			p.log.Info().Msgf("producer[%d]: shutting down", p.tid)
 			break EXIT
 		case p.queue <- task:
 			p.submittedWork++
-			p.log.Debug().Msgf("producer[%d]: added a work item", tid)
+			p.log.Debug().Msgf("producer[%d]: added a work item", p.tid)
 			time.Sleep(p.pacingDuration)
 		default:
-			p.log.Debug().Msgf("unable to add an item to the work queue, it's full: %d", len(p.queue))
 			p.stalls++
-
 			// Make a blocking write now that we've recorded the stall
 			blockedAt := time.Now()
 			select {
@@ -107,7 +106,7 @@ EXIT:
 			}
 		}
 	}
-	p.log.Debug().Msgf("producer[%d]: exiting: submitted %d, stalled %d times", tid, p.submittedWork, p.stalls)
+	p.log.Debug().Msgf("producer[%d]: exiting: submitted %d, stalled %d times", p.tid, p.submittedWork, p.stalls)
 
 	return nil
 }
