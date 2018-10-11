@@ -15,31 +15,29 @@ func main() {
 	os.Exit(realMain())
 }
 
-type State int
+type _State int
 
 const (
-	stateInitializing State = iota
+	stateInitializing _State = iota
 	stateRunning
 	stateStopped
 )
 
-var states map[State]string
+var states map[_State]string
 
 func init() {
-	states = map[State]string{
+	states = map[_State]string{
 		stateInitializing: "initializing",
 		stateRunning:      "running",
 		stateStopped:      "stopped",
 	}
 }
 
-type States []State
-
-func (s State) ID() int {
+func (s _State) ID() int {
 	return int(s)
 }
 
-func (s State) Name() string {
+func (s _State) Name() string {
 	if str, found := states[s]; found {
 		return str
 	}
@@ -48,7 +46,7 @@ func (s State) Name() string {
 	return "unknown"
 }
 
-func (s State) MarshalZerologObject(e *zerolog.Event) {
+func (s _State) MarshalZerologObject(e *zerolog.Event) {
 	e.Str("state", s.Name())
 }
 
