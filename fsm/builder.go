@@ -23,7 +23,8 @@ func (b *Builder) SetLog(log zerolog.Logger) {
 	b.log = log
 }
 
-func (b *Builder) SetStart(s State) {
+// SetInitialState sets the initial state of the FSM when it is created.
+func (b *Builder) SetInitialState(s State) {
 	b.start = s
 }
 

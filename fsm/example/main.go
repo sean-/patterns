@@ -80,7 +80,7 @@ func realMain() int {
 	fb.SetStates([]fsm.State{
 		stateInitializing,
 	})
-	fb.SetStart(stateInitializing)
+	fb.SetInitialState(stateInitializing)
 	_ = fb.AddTransition(fsm.Transition{
 		From: stateInitializing,
 		To:   stateRunning,
