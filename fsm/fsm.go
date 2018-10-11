@@ -7,6 +7,7 @@ import (
 	"github.com/rs/zerolog"
 )
 
+// FromToTuple is used to construct a transition lookup key
 type FromToTuple struct {
 	From State
 	To   State
@@ -20,6 +21,8 @@ type _Transition struct {
 
 type _TransitionMap map[FromToTuple]_Transition
 
+// FSM is a Finite State Machine implementation.  An FSM is created via a
+// Builder.
 type FSM struct {
 	currentState  State
 	onExitActions []ExitHandler
@@ -30,12 +33,25 @@ type FSM struct {
 	transitions   _TransitionMap
 }
 
+// State interface specifies the required interface for a State in the FSM.
 type State interface {
+	// ID is a unique numeric ID representing a State
 	ID() int
 	MarshalZerologObject(e *zerolog.Event)
+	// Name is the human-friendly name of the State
 	Name() string
 }
 
+// Transition is a user-specified Transition.  From is the old state.  To is the
+// new State.  Guards are a collection of zero or more callbacks that are
+// executed to determine if a transition may occur.  If a Guard returns an
+// error, the transition will fail.  Once all GlobalGuards and
+// Transition-specific Guards complete successfully, any OnEnterToActions will
+// be executed when the To state is being entered (error handling must be
+// handled by the caller and any error conditions should be detected in a
+// Guard).  Any OnExitToActions will be called when the FSM transitions to a
+// different state (again, error handling must be handled in a Guard or by the
+// handler itself).
 type Transition struct {
 	From             State
 	To               State
@@ -44,15 +60,22 @@ type Transition struct {
 	OnExitToActions  []ExitHandler
 }
 
+// EnterHandler is the On-Enter transition handler
 type EnterHandler func()
+
+// ExitHandler is the On-Exit transition handler
 type ExitHandler func()
 
+// Guard is the transition guard handler signature
 type Guard func(currState, newState State) error
 
+// States returns a list of known states
 func (m *FSM) States() []State {
 	return m.states
 }
 
+// Transitions returns a list of transitions in the form of a slice of
+// FromToTuples.
 func (m *FSM) Transitions() []FromToTuple {
 	ret := make([]FromToTuple, len(m.transitions))
 	var i int
@@ -64,7 +87,12 @@ func (m *FSM) Transitions() []FromToTuple {
 	return ret
 }
 
+// CurrentState returns the current state of the FSM.  This method will deadlock
+// if called within a Transition Handler.
 func (m *FSM) CurrentState() State {
+	m.lock.Lock()
+	defer m.lock.Unlock()
+
 	return m.currentState
 }
 
@@ -126,6 +154,7 @@ func (m *FSM) Transition(s State) error {
 	return nil
 }
 
+// Copy creates a duplicate FromToTuple
 func (ftt FromToTuple) Copy() FromToTuple {
 	return FromToTuple{
 		From: ftt.From,
