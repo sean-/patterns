@@ -28,10 +28,6 @@ func (b *Builder) SetInitialState(s State) {
 	b.start = s
 }
 
-func (b *Builder) SetStates(s []State) {
-	b.states = s
-}
-
 func (b *Builder) AddTransition(trans Transition) error {
 	b.transitions = append(b.transitions, trans)
 	return nil

@@ -77,9 +77,6 @@ func realMain() int {
 		},
 	})
 	fb.SetLog(log)
-	fb.SetStates([]fsm.State{
-		stateInitializing,
-	})
 	fb.SetInitialState(stateInitializing)
 	_ = fb.AddTransition(fsm.Transition{
 		From: stateInitializing,
