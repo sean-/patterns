@@ -37,7 +37,7 @@ func (s _State) ID() int {
 	return int(s)
 }
 
-func (s _State) Name() string {
+func (s _State) String() string {
 	if str, found := states[s]; found {
 		return str
 	}
@@ -47,7 +47,7 @@ func (s _State) Name() string {
 }
 
 func (s _State) MarshalZerologObject(e *zerolog.Event) {
-	e.Str("state", s.Name())
+	e.Str("state", s.String())
 }
 
 func realMain() int {

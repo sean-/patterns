@@ -38,8 +38,8 @@ type State interface {
 	// ID is a unique numeric ID representing a State
 	ID() int
 	MarshalZerologObject(e *zerolog.Event)
-	// Name is the human-friendly name of the State
-	Name() string
+	// String is the human-friendly name of the State
+	String() string
 }
 
 // Transition is a user-specified Transition.  From is the old state.  To is the
