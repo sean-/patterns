@@ -46,12 +46,11 @@ type State interface {
 // new State.  Guards are a collection of zero or more callbacks that are
 // executed to determine if a transition may occur.  If a Guard returns an
 // error, the transition will fail.  Once all GlobalGuards and
-// Transition-specific Guards complete successfully, any OnEnterToActions will
-// be executed when the To state is being entered (error handling must be
-// handled by the caller and any error conditions should be detected in a
-// Guard).  Any OnExitToActions will be called when the FSM transitions to a
-// different state (again, error handling must be handled in a Guard or by the
-// handler itself).
+// Transition-specific Guards complete successfully, any OnExitToActions will be
+// executed when the From State is being exited (error handling must be handled
+// by the caller and any error conditions should be detected in a Guard).  Any
+// OnEnterToActions will be called when the FSM transitions to a different state
+// (again, error handling must be handled in a Guard or by the handler itself).
 type Transition struct {
 	From             State
 	To               State
