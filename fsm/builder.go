@@ -1,6 +1,10 @@
 package fsm
 
-import "github.com/rs/zerolog"
+import (
+	"errors"
+
+	"github.com/rs/zerolog"
+)
 
 // Builder is used to construct a new FSM instance
 type Builder struct {
@@ -9,6 +13,7 @@ type Builder struct {
 	start        State
 	states       []State
 	transitions  []Transition
+	stater       Stater
 }
 
 // NewBuilder creates a new FSM Builder.
@@ -43,7 +48,11 @@ func (b *Builder) SetTransitions(transitions []Transition) {
 }
 
 // Build constructs a new FSM
-func (b *Builder) Build() (*FSM, error) {
+func (b *Builder) Build(stater Stater) (*FSM, error) {
+	if stater == nil {
+		return nil, errors.New("failed to pass stater type into build")
+	}
+
 	transMap := make(_TransitionMap, len(b.transitions))
 
 	for _, t := range b.transitions {
@@ -59,11 +68,12 @@ func (b *Builder) Build() (*FSM, error) {
 	}
 
 	m := &FSM{
-		currentState: b.start,
+		currentState: stater.GetState(),
 		globalGuards: append([]Guard{}, b.globalGuards...),
 		log:          b.log,
 		states:       b.states,
 		transitions:  transMap,
+		stater:       stater,
 	}
 
 	return m, nil
