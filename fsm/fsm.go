@@ -13,13 +13,20 @@ type FromToTuple struct {
 	To   State
 }
 
+// FromIDToIDTuple is used to construct a transition lookup key
+type _FromIDToIDTuple struct {
+	From StateID
+	To   StateID
+}
+
 type _Transition struct {
+	transition     FromToTuple
 	guards         []Guard
 	onEnterActions []EnterHandler
 	onExitActions  []ExitHandler
 }
 
-type _TransitionMap map[FromToTuple]_Transition
+type _TransitionMap map[_FromIDToIDTuple]_Transition
 
 // FSM is a Finite State Machine implementation.  An FSM is created via a
 // Builder.
@@ -33,10 +40,13 @@ type FSM struct {
 	transitions   _TransitionMap
 }
 
+// StateID is the internal descriptor used to uniquely identify a State.
+type StateID int64
+
 // State interface specifies the required interface for a State in the FSM.
 type State interface {
 	// ID is a unique numeric ID representing a State
-	ID() int
+	ID() StateID
 	MarshalZerologObject(e *zerolog.Event)
 	// String is the human-friendly name of the State
 	String() string
@@ -78,8 +88,8 @@ func (m *FSM) States() []State {
 func (m *FSM) Transitions() []FromToTuple {
 	ret := make([]FromToTuple, len(m.transitions))
 	var i int
-	for x := range m.transitions {
-		ret[i] = x.Copy()
+	for _, v := range m.transitions {
+		ret[i] = v.transition.Copy()
 		i++
 	}
 
@@ -104,7 +114,7 @@ func (m *FSM) CurrentState() State {
 // changed.  If there are any on-enter hooks, the entry hooks are executed
 // before the Transition returns.
 func (m *FSM) Transition(s State) error {
-	transKey := FromToTuple{From: m.currentState, To: s}
+	transKey := _FromIDToIDTuple{From: m.currentState.ID(), To: s.ID()}
 
 	// For now, wrap the entire function in a single mutex.  Reentrant transition
 	// changes are not supported at this time.  I'm not sure how that would be
@@ -115,7 +125,7 @@ func (m *FSM) Transition(s State) error {
 	// 1. Ensure the transition exists
 	trans, found := m.transitions[transKey]
 	if !found {
-		return errors.Errorf("unable to transition from %v to %v", m.currentState, s)
+		return errors.Errorf("unable to transition from %q to %q", m.currentState, s)
 	}
 
 	m.log.Debug().Object("from", m.currentState).Object("to", s).Msg("transitioning")
@@ -124,7 +134,7 @@ func (m *FSM) Transition(s State) error {
 	for i, guard := range m.globalGuards {
 		err := guard(m.currentState, s)
 		if err != nil {
-			return errors.Wrapf(err, "unable to transition from %s to %s in global guard %d", m.currentState, s, i)
+			return errors.Wrapf(err, "unable to transition from %q to %q in global guard %d", m.currentState, s, i)
 		}
 	}
 
@@ -132,7 +142,7 @@ func (m *FSM) Transition(s State) error {
 	for i, guard := range trans.guards {
 		err := guard(m.currentState, s)
 		if err != nil {
-			return errors.Wrapf(err, "unable to transition from %s to %s in transition guard %d", m.currentState, s, i)
+			return errors.Wrapf(err, "unable to transition from %q to %q in transition guard %d", m.currentState, s, i)
 		}
 	}
 
