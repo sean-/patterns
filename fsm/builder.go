@@ -52,7 +52,6 @@ func (b *Builder) Build() (*FSM, error) {
 	statesNameMap := make(map[string]State, 2*len(b.transitions))
 
 	for _, t := range b.transitions {
-		t := t
 		statesIDMap[t.From.ID()] = t.From
 		statesIDMap[t.To.ID()] = t.To
 		statesNameMap[t.From.String()] = t.From
@@ -90,7 +89,6 @@ func (b *Builder) Build() (*FSM, error) {
 
 	states := make([]State, 0, len(statesIDMap))
 	for _, s := range statesIDMap {
-		s := s
 		states = append(states, s)
 	}
 
