@@ -15,7 +15,7 @@ func main() {
 	os.Exit(realMain())
 }
 
-type _State int
+type _State int64
 
 const (
 	stateInitializing _State = iota
@@ -33,11 +33,11 @@ func init() {
 	}
 }
 
-func (s _State) ID() int {
-	return int(s)
+func (s _State) ID() fsm.StateID {
+	return fsm.StateID(s)
 }
 
-func (s _State) Name() string {
+func (s _State) String() string {
 	if str, found := states[s]; found {
 		return str
 	}
@@ -47,7 +47,7 @@ func (s _State) Name() string {
 }
 
 func (s _State) MarshalZerologObject(e *zerolog.Event) {
-	e.Str("state", s.Name())
+	e.Str("state", s.String())
 }
 
 func realMain() int {
