@@ -50,6 +50,28 @@ func (s _State) MarshalZerologObject(e *zerolog.Event) {
 	e.Str("state", s.Name())
 }
 
+func (s _State) String() string {
+	return s.Name()
+}
+
+type _Stater struct {
+	state fsm.State
+}
+
+func (s *_Stater) SetState(ss fsm.State) error {
+	s.state = ss
+	return nil
+}
+
+func (s *_Stater) GetState() fsm.State {
+	return s.state
+}
+
+func (s *_Stater) MarshalZerologObject(e *zerolog.Event) {
+	// just delegate down to the state marshaler
+	s.GetState().MarshalZerologObject(e)
+}
+
 func realMain() int {
 	seed.MustInit()
 
@@ -69,30 +91,34 @@ func realMain() int {
 	}
 
 	fb.SetGlobalGuards([]fsm.Guard{
-		func(old, new fsm.State) error {
-			log.Debug().Object("old", old).Object("new", new).Msg("global guard fired")
+		func(old, new fsm.State, stater fsm.Stater) error {
+			st := stater.(*_Stater)
+			log.Debug().Object("old", old).Object("new", new).Object("stater", st).Msg("global guard fired")
 			return nil
 		},
 	})
 	fb.SetLog(log)
-	fb.SetInitialState(stateInitializing)
+
 	_ = fb.AddTransition(fsm.Transition{
 		From: stateInitializing,
 		To:   stateRunning,
 		Guards: []fsm.Guard{
-			func(old, new fsm.State) error {
-				log.Debug().Object("old", old).Object("new", new).Msg("transition guard fired")
+			func(old, new fsm.State, stater fsm.Stater) error {
+				st := stater.(*_Stater)
+				log.Debug().Object("old", old).Object("new", new).Object("stater", st).Msg("transition guard fired")
 				return nil
 			},
 		},
 		OnEnterToActions: []fsm.EnterHandler{
-			func() {
-				log.Debug().Msg("entering running state")
+			func(stater fsm.Stater) {
+				st := stater.(*_Stater)
+				log.Debug().Object("stater", st).Msg("entering running state")
 			},
 		},
 		OnExitToActions: []fsm.ExitHandler{
-			func() {
-				log.Debug().Msg("exiting running state")
+			func(stater fsm.Stater) {
+				st := stater.(*_Stater)
+				log.Debug().Object("stater", st).Msg("exiting running state")
 			},
 		},
 	})
@@ -100,13 +126,21 @@ func realMain() int {
 		From: stateRunning,
 		To:   stateStopped,
 		OnEnterToActions: []fsm.EnterHandler{
-			func() {
-				log.Debug().Msg("entering stopped state")
+			func(stater fsm.Stater) {
+				st := stater.(*_Stater)
+				log.Debug().Object("stater", st).Msg("entering stopped state")
 			},
 		},
 	})
 
-	m, err := fb.Build()
+	var stater = &_Stater{}
+
+	if err := stater.SetState(stateInitializing); err != nil {
+		log.Error().Err(err).Msg("unable to build FSM")
+		return sysexits.Software
+	}
+
+	m, err := fb.Build(stater)
 	if err != nil {
 		log.Error().Err(err).Msg("unable to build FSM")
 		return sysexits.Software
@@ -117,6 +151,8 @@ func realMain() int {
 	}
 
 	log.Debug().Object("current state", m.CurrentState()).Msg("")
+
+	log.Debug().Object("stater", stater).Msg("")
 
 	for _, x := range m.Transitions() {
 		log.Debug().Object("from", x.From).Object("to", x.To).Msg("")
@@ -135,6 +171,8 @@ func realMain() int {
 	}
 
 	log.Debug().Object("current state", m.CurrentState()).Msg("")
+
+	log.Debug().Object("stater", stater).Msg("")
 
 	log.Debug().Msg("done")
 
